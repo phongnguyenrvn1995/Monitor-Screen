@@ -39,9 +39,13 @@ public class UDPServer {
             socket = new DatagramSocket(PORT);
             System.out.println("UDP server is listening on port " + PORT);
 
-            byte[] buffer = new byte[200 * 1024];
-            byte[] imageBuffer = new byte[200 * 1024];
+            byte[] buffer = new byte[4 * 1024 * 1024];
+            byte[] imageBuffer = new byte[4 * 1024 * 1024];
             int imageBufferIdx = 0;
+            boolean isReading = false;
+            String imageTimeStamp = "";
+            int numBlocks = 0;
+            int numBlocksReadAlready = 0;
 
             while (isListening) {
                 // Tạo một DatagramPacket để nhận dữ liệu
@@ -52,28 +56,50 @@ public class UDPServer {
                 String message = new String(packet.getData(), 0, packet.getLength());
 //                System.out.println("Received message: " + packet.getLength());
 
-                if (message.startsWith("==IMAGE START==")) {
+                if (message.startsWith("==IMAGE START==")) { // client => _sendData2Server("==IMAGE START==|$timeStamp|$totalBlock".toByteArray())
                     Arrays.fill(imageBuffer, (byte) 0); // clear image buf
                     imageBufferIdx = 0;
-                    System.out.println("START IMAGE");
+                    String[] spl = message.split("\\|");
+                    isReading = true;
+                    imageTimeStamp = spl[1];
+                    numBlocks = Integer.parseInt(spl[2]);
+                    numBlocksReadAlready = 0;
+                    System.out.println("START IMAGE imageTimeStamp = " + imageTimeStamp + " numBlocks = " + numBlocks);
                     continue;
                 }
 
-                if (message.startsWith("==IMAGE END==")) {
+                if (message.startsWith("==IMAGE END==")) { // client => _sendData2Server("==IMAGE END==|$timeStamp".toByteArray())
                     // xử lý hiện ảnh
                     System.out.println("IMAGE size = " + imageBuffer.length);
                     System.out.println("imageBufferIdx = " + imageBufferIdx);
 
-                    byte[] ret = new byte[imageBufferIdx];
-                    System.arraycopy(imageBuffer, 0, ret, 0, imageBufferIdx);
-                    listener.onReceivedImage(ret);
+                    String[] spl = message.split("\\|");
+                    System.out.println("==IMAGE END== imageTimeStamp = " + spl[1]);
+                    System.out.println("==IMAGE END== numBlocksReadAlready = " + numBlocksReadAlready);
+                    System.out.println("==IMAGE END== numBlocks = " + numBlocks);
+
+                    if(imageTimeStamp.equals(spl[1]) && numBlocks == numBlocksReadAlready) {
+                        System.out.println("Hiển thị hình");
+                        byte[] ret = new byte[imageBufferIdx];
+                        System.arraycopy(imageBuffer, 0, ret, 0, imageBufferIdx);
+                        listener.onReceivedImage(ret);
+                    }
+                    isReading = false;
                     continue;
                 }
 
-                // đọc ảnh
+                // đọc ảnh client >> _sendData2Server("$timeStamp|$idx|$expectSize|${String(expectBuff)}".toByteArray())
+                String[] spl = message.split("\\|");
+                if(isReading
+                        && imageTimeStamp.equals(spl[0])) {
+                    int idx = Integer.parseInt(spl[1]);
+                    int expectSize = Integer.parseInt(spl[2]);
+//                    System.out.println("message.lastIndexOf(spl[3]) " + message.lastIndexOf(spl[3]));
+                    System.arraycopy(packet.getData(), message.lastIndexOf(spl[3]), imageBuffer, idx, expectSize);
+                    imageBufferIdx += expectSize;
+                    numBlocksReadAlready++;
+                }
 
-                System.arraycopy(packet.getData(), 0, imageBuffer, imageBufferIdx, packet.getLength());
-                imageBufferIdx += packet.getLength();
 
 
                 // Gửi lại dữ liệu (echo) cho client

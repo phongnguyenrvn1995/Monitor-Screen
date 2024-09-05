@@ -1,11 +1,14 @@
 package com.example.monitorscreen;
 
+import com.example.monitorscreen.comm.TCPServer;
 import com.example.monitorscreen.comm.UDPServer;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
+import javafx.scene.control.RadioButton;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 
@@ -23,27 +26,47 @@ public class HelloController {
     @FXML
     public TextField port;
     @FXML
+    public RadioButton rBtnUdp;
+    @FXML
+    public RadioButton rBtnTcp;
+    @FXML
     private ImageView mainScreen;
+
+
+    private final ToggleGroup group = new ToggleGroup();
 
     @FXML
     private void initialize() {
         System.out.println("RUN");
         mainScreen.setPreserveRatio(true);
+        mainScreen.setSmooth(true);
+
         btnStart.setDisable(false);
         btnStop.setDisable(true);
+
+        rBtnUdp.setToggleGroup(group);
+        rBtnTcp.setToggleGroup(group);
+    }
+
+    private boolean isUDP() {
+        System.out.println("is UDP" + (group.getSelectedToggle() == rBtnUdp));
+        return group.getSelectedToggle() == rBtnUdp;
     }
 
     @FXML
     protected void onBtnStopClick() {
         System.out.println("STOP----->");
         UDPServer.stop();
+        TCPServer.stop();
         btnStart.setDisable(false);
         btnStop.setDisable(true);
         port.setDisable(false);
+        group.getToggles().forEach(toggle -> ((RadioButton) toggle).setDisable(false));
         try {
             mainScreen.setImage(new Image(Objects.requireNonNull(getClass().getResourceAsStream("/main_image_welcome.png"))));
-        } catch (Exception ex){
+        } catch (Exception ex) {
             System.out.println("PORT invalid >> use default " + UDPServer.PORT);
+            System.out.println("PORT invalid >> use default " + TCPServer.PORT);
         }
     }
 
@@ -56,28 +79,50 @@ public class HelloController {
         try {
             mainScreen.setImage(new Image(Objects.requireNonNull(getClass().getResourceAsStream("/main_image.png"))));
             UDPServer.PORT = Integer.parseInt(port.getCharacters().toString());
-        } catch (Exception ex){
+            TCPServer.PORT = Integer.parseInt(port.getCharacters().toString());
+        } catch (Exception ex) {
             System.out.println("PORT invalid >> use default " + UDPServer.PORT);
+            System.out.println("PORT invalid >> use default " + TCPServer.PORT);
         }
-        port.setText(UDPServer.PORT + "");
+
+        if (isUDP())
+            port.setText(UDPServer.PORT + "");
+        else
+            port.setText(TCPServer.PORT + "");
         port.setDisable(true);
+        group.getToggles().forEach(toggle -> ((RadioButton) toggle).setDisable(true));
 
 
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() {
-                UDPServer.listen(new UDPServer.UDPServerListener() {
-                    @Override
-                    public void onOpened(int port) {
-                        System.out.println("OPEN AT PORT: " + port);
-                    }
+                if (isUDP()) {
+                    UDPServer.listen(new UDPServer.UDPServerListener() {
+                        @Override
+                        public void onOpened(int port) {
+                            System.out.println("OPEN AT PORT: " + port);
+                        }
 
-                    @Override
-                    public void onReceivedImage(byte[] imageData) {
-                        System.out.println("CALLBACK ====> " + imageData.length);
-                        showImage(imageData);
-                    }
-                });
+                        @Override
+                        public void onReceivedImage(byte[] imageData) {
+                            System.out.println("CALLBACK ====> " + imageData.length);
+                            showImage(imageData);
+                        }
+                    });
+                } else {
+                    TCPServer.listen(new TCPServer.TCPServerListener() {
+                        @Override
+                        public void onOpened(int port) {
+                            System.out.println("OPEN AT PORT: " + port);
+                        }
+
+                        @Override
+                        public void onReceivedImage(byte[] imageData) {
+                            System.out.println("CALLBACK ====> " + imageData.length);
+                            showImage(imageData);
+                        }
+                    });
+                }
                 return null;
             }
 
